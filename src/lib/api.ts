@@ -4,6 +4,9 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
 });
 
+// -----------------------------
+// Document & General AI Features
+// -----------------------------
 export const uploadDocument = (file: File, onProgress?: (pct: number) => void) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -21,10 +24,30 @@ export const queryAI = (query: string) => api.post('/query', { query });
 export const explainAI = (text: string) => api.post('/explain', { text });
 export const summarizeAI = (documentId: string) => api.post('/summarize', { document_id: documentId });
 export const detectIntent = (text: string) => api.post('/intent', { text });
-export const generateQuiz = (numQuestions = 5) => api.post('/generate-quiz', { num_questions: numQuestions });
-export const evaluateAnswer = (questionId: string, answer: string) => api.post('/evaluate-answer', { question_id: questionId, answer });
-export const generateFlashcards = (numCards = 5) => api.post('/generate-flashcards', { num_cards: numCards });
-export const getProgress = () => api.get('/progress');
-export const getHistory = () => api.get('/history');
+
+// -----------------------------
+// Quiz Endpoints (Fixed to match backend)
+// -----------------------------
+export const startQuiz = () => api.post('/quiz/start');
+
+export const submitAnswer = (selected_option: string) => 
+  api.post('/quiz/answer', { selected_option });
+
+export const getNextQuestion = () => api.get('/quiz/next');
+
+export const getQuizSummary = () => api.get('/quiz/summary');
+
+// Aliases for backward compatibility (optional)
+export const generateQuiz = startQuiz;
+export const evaluateAnswer = (selected_option: string) => submitAnswer(selected_option);
+
+// -----------------------------
+// Flashcards & Tracking
+// -----------------------------
+export const generateFlashcards = (numCards = 5) => 
+  api.post('/generate-flashcards', { num_cards: numCards });
+
+export const getProgress = () => api.get('/tracking/progress');
+export const getHistory = () => api.get('/tracking/history');
 
 export default api;
