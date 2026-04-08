@@ -68,7 +68,7 @@ const QuizPage = () => {
     try {
       const res = await submitAnswer(selected);
       setFeedback({
-        correct: res.data?.correct ?? false,
+        correct: res.data?.is_correct ?? false,
         explanation: res.data?.explanation,
       });
     } catch (e: any) {

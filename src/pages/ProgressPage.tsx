@@ -4,10 +4,13 @@ import { LoopySVG } from '@/components/LoopySVG';
 import { getProgress, getHistory } from '@/lib/api';
 
 interface Stats {
-  quizzes_taken?: number;
-  avg_score?: number;
-  flashcards_reviewed?: number;
-  total_sessions?: number;
+  correct?: number;
+  wrong?: number;
+  total?: number;
+  accuracy?: number;
+  last_intent?: string;
+  weak_intents?: string[];
+  intent_stats?: Record<string, { correct: number; total: number; accuracy: number }>;
 }
 
 interface HistoryItem {
@@ -15,6 +18,8 @@ interface HistoryItem {
   type: string;
   date: string;
   score?: number;
+  correct?: number;  
+  total?: number;
 }
 
 const ProgressPage = () => {
@@ -27,9 +32,28 @@ const ProgressPage = () => {
     const fetch = async () => {
       try {
         const [pRes, hRes] = await Promise.all([getProgress(), getHistory()]);
-        setStats(pRes.data);
-        setHistory(hRes.data?.sessions || hRes.data || []);
+        
+        console.log('Progress response:', pRes.data);
+        console.log('History response:', hRes.data);
+        
+        // Extract progress data from nested structure
+        const progressRaw = pRes.data?.progress || pRes.data;
+        setStats(progressRaw);
+        
+        // History endpoint returns same data structure, create synthetic history from intent_stats
+        let historyData: HistoryItem[] = [];
+        if (progressRaw?.intent_stats) {
+          historyData = Object.entries(progressRaw.intent_stats).map(([intent, stat]: [string, any], index) => ({
+            id: `hist-${index}`,
+            type: intent,
+            date: new Date().toISOString(), // No date in backend, use current
+            score: Math.round((stat.accuracy || 0) * 100)
+          }));
+        }
+        
+        setHistory(historyData);
       } catch (e: any) {
+        console.error('Progress fetch error:', e);
         setError(e?.response?.data?.detail || 'Failed to load progress');
       } finally {
         setLoading(false);
@@ -54,15 +78,25 @@ const ProgressPage = () => {
     );
   }
 
+  // Map backend fields to frontend display
+  // correct = questions answered correctly
+  // total = total questions attempted
+  // accuracy = avg score as decimal (0.0-1.0)
+  const safeStats = {
+    quizzes_taken: stats?.total ?? 0,
+    avg_score: Math.round((stats?.accuracy ?? 0) * 100),
+    flashcards_reviewed: stats?.correct ?? 0,
+    total_sessions: Object.keys(stats?.intent_stats ?? {}).length,
+  };
+
   const statCards = [
-    { icon: Brain, label: 'Quizzes Taken', value: stats?.quizzes_taken ?? 0, color: 'from-indigo-500 to-indigo-600' },
-    { icon: TrendingUp, label: 'Avg Score', value: `${stats?.avg_score ?? 0}%`, color: 'from-teal-500 to-teal-600' },
-    { icon: Layers, label: 'Cards Reviewed', value: stats?.flashcards_reviewed ?? 0, color: 'from-purple-500 to-purple-600' },
-    { icon: Clock, label: 'Total Sessions', value: stats?.total_sessions ?? 0, color: 'from-amber-500 to-amber-600' },
+    { icon: Brain, label: 'Questions Attempted', value: safeStats.quizzes_taken, color: 'from-indigo-500 to-indigo-600' },
+    { icon: TrendingUp, label: 'Accuracy', value: `${safeStats.avg_score}%`, color: 'from-teal-500 to-teal-600' },
+    { icon: Layers, label: 'Correct Answers', value: safeStats.flashcards_reviewed, color: 'from-purple-500 to-purple-600' },
+    { icon: Clock, label: 'Topics Covered', value: safeStats.total_sessions, color: 'from-amber-500 to-amber-600' },
   ];
 
-  // Donut chart SVG
-  const avgScore = stats?.avg_score ?? 0;
+  const avgScore = safeStats.avg_score;
   const circumference = 2 * Math.PI * 45;
   const filled = (avgScore / 100) * circumference;
 
@@ -71,11 +105,10 @@ const ProgressPage = () => {
       <h1 className="text-3xl font-heading font-bold mb-2">Progress</h1>
       <p className="text-muted-foreground mb-8">Track your learning journey</p>
 
-      {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
         {statCards.map((s, i) => (
           <div key={s.label} className="relative bg-card rounded-2xl p-5 shadow-card animate-fade-in" style={{ animationDelay: `${i * 0.1}s` }}>
-            <LoopySVG variant="card" className="absolute top-1 right-1 w-14 h-14" />
+            <LoopySVG variant="card" className="absolute top-1 right-1 w-14 h-14 opacity-50" />
             <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${s.color} flex items-center justify-center mb-3`}>
               <s.icon className="h-5 w-5 text-primary-foreground" />
             </div>
@@ -85,7 +118,6 @@ const ProgressPage = () => {
         ))}
       </div>
 
-      {/* Donut chart */}
       <div className="grid md:grid-cols-2 gap-8">
         <div className="bg-card rounded-2xl p-8 shadow-card flex flex-col items-center">
           <h2 className="font-heading font-semibold mb-6">Performance</h2>
@@ -110,13 +142,12 @@ const ProgressPage = () => {
               </linearGradient>
             </defs>
           </svg>
-          <p className="text-sm text-muted-foreground mt-4">Average Quiz Score</p>
+          <p className="text-sm text-muted-foreground mt-4">Overall Accuracy</p>
         </div>
 
-        {/* History */}
         <div className="bg-card rounded-2xl p-8 shadow-card">
-          <h2 className="font-heading font-semibold mb-4">Recent Activity</h2>
-          {history.length === 0 ? (
+          <h2 className="font-heading font-semibold mb-4">Topic Performance</h2>
+          {!Array.isArray(history) || history.length === 0 ? (
             <p className="text-muted-foreground text-sm">No activity yet. Start a quiz or review flashcards!</p>
           ) : (
             <div className="space-y-3 max-h-64 overflow-y-auto">
@@ -124,10 +155,14 @@ const ProgressPage = () => {
                 <div key={item.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                   <div>
                     <p className="text-sm font-medium capitalize">{item.type}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(item.date).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.correct} correct / {item.total} total
+                    </p>
                   </div>
                   {item.score !== undefined && (
-                    <span className="text-sm font-semibold text-gradient">{item.score}%</span>
+                    <span className={`text-sm font-semibold ${item.score >= 70 ? 'text-green-500' : item.score >= 40 ? 'text-yellow-500' : 'text-red-500'}`}>
+                      {item.score}%
+                    </span>
                   )}
                 </div>
               ))}

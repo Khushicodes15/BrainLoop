@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://192.168.29.170:8000',
 });
 
 // -----------------------------
@@ -18,7 +18,7 @@ export const uploadDocument = (file: File, onProgress?: (pct: number) => void) =
   });
 };
 
-export const getDocuments = () => api.get('/documents');
+export const getDocuments = () => api.get('/documents/');
 export const deleteDocument = (id: string) => api.delete(`/documents/${id}`);
 export const queryAI = (query: string) => api.post('/query', { query });
 export const explainAI = (text: string) => api.post('/explain', { text });

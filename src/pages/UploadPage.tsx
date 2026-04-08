@@ -23,9 +23,27 @@ const UploadPage = () => {
   const fetchDocs = useCallback(async () => {
     try {
       const res = await getDocuments();
-      setDocs(res.data);
-    } catch {
-      // empty state
+      console.log('Documents response:', res.data);
+      
+      let data: Doc[] = [];
+      const raw = res.data?.documents;
+      
+      // Handle array of strings (backend returns filenames only)
+      if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string') {
+        data = raw.map((filename: string) => ({
+          id: filename,
+          name: filename,
+          uploaded_at: undefined
+        }));
+      } else if (Array.isArray(raw)) {
+        // Handle array of objects (if backend changes later)
+        data = raw;
+      }
+      
+      setDocs(data);
+    } catch (e: any) {
+      console.error('Failed to fetch docs:', e);
+      setDocs([]);
     } finally {
       setLoading(false);
     }
@@ -34,18 +52,29 @@ const UploadPage = () => {
   useEffect(() => { fetchDocs(); }, [fetchDocs]);
 
   const handleUpload = async (file: File) => {
+    if (!file || file.type !== 'application/pdf') {
+      setStatus('error');
+      setError('Please upload a valid PDF file');
+      return;
+    }
+    
     setUploading(true);
     setStatus('idle');
     setProgress(0);
+    setError('');
+    
     try {
-      await uploadDocument(file, setProgress);
+      const res = await uploadDocument(file, setProgress);
+      console.log('Upload response:', res.data);
       setStatus('success');
-      fetchDocs();
+      await fetchDocs();
     } catch (e: any) {
+      console.error('Upload error:', e);
       setStatus('error');
-      setError(e?.response?.data?.detail || 'Upload failed');
+      setError(e?.response?.data?.detail || e?.message || 'Upload failed');
     } finally {
       setUploading(false);
+      setTimeout(() => setProgress(0), 1000);
     }
   };
 
@@ -56,11 +85,25 @@ const UploadPage = () => {
     if (file) handleUpload(file);
   };
 
+  const handleFileSelect = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,application/pdf';
+    input.onchange = (e: any) => {
+      const file = e.target.files?.[0];
+      if (file) handleUpload(file);
+    };
+    input.click();
+  };
+
   const handleDelete = async (id: string) => {
+    if (!id) return;
     try {
       await deleteDocument(id);
       setDocs((d) => d.filter((doc) => doc.id !== id));
-    } catch { /* silent */ }
+    } catch (e: any) {
+      console.error('Delete error:', e);
+    }
   };
 
   return (
@@ -68,32 +111,21 @@ const UploadPage = () => {
       <h1 className="text-3xl font-heading font-bold mb-2">Upload Documents</h1>
       <p className="text-muted-foreground mb-8">Drop your PDFs and let BrainLoop work its magic</p>
 
-      {/* Drop zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
+        onClick={handleFileSelect}
         className={`relative border-2 border-dashed rounded-2xl p-12 text-center transition-all cursor-pointer ${
           dragging ? 'border-primary bg-accent/50 scale-[1.01]' : 'border-border hover:border-primary/50 bg-card'
         }`}
-        onClick={() => {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = '.pdf';
-          input.onchange = (e: any) => {
-            const file = e.target.files[0];
-            if (file) handleUpload(file);
-          };
-          input.click();
-        }}
       >
-        <LoopySVG variant="card" className="absolute top-2 right-2 w-24 h-24" />
+        <LoopySVG variant="card" className="absolute top-2 right-2 w-24 h-24 opacity-50" />
         <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
         <p className="text-lg font-medium mb-1">Drag & drop your PDF here</p>
         <p className="text-sm text-muted-foreground">or click to browse</p>
       </div>
 
-      {/* Progress */}
       {uploading && (
         <div className="mt-6">
           <Progress value={progress} className="h-3" />
@@ -101,7 +133,6 @@ const UploadPage = () => {
         </div>
       )}
 
-      {/* Status */}
       {status === 'success' && (
         <div className="mt-4 flex items-center gap-2 text-secondary">
           <CheckCircle className="h-5 w-5" /> Upload successful!
@@ -113,7 +144,6 @@ const UploadPage = () => {
         </div>
       )}
 
-      {/* Documents */}
       <div className="mt-12">
         <h2 className="text-xl font-heading font-semibold mb-4">Your Documents</h2>
         {loading ? (
@@ -130,7 +160,10 @@ const UploadPage = () => {
         ) : (
           <div className="space-y-3">
             {docs.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between bg-card rounded-xl p-4 shadow-card hover:shadow-card-hover transition-all">
+              <div 
+                key={doc.id} 
+                className="flex items-center justify-between bg-card rounded-xl p-4 shadow-card hover:shadow-card-hover transition-all"
+              >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
                     <FileText className="h-5 w-5 text-accent-foreground" />
@@ -138,11 +171,18 @@ const UploadPage = () => {
                   <div>
                     <p className="font-medium">{doc.name}</p>
                     {doc.uploaded_at && (
-                      <p className="text-xs text-muted-foreground">{new Date(doc.uploaded_at).toLocaleDateString()}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(doc.uploaded_at).toLocaleDateString()}
+                      </p>
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(doc.id)} className="text-muted-foreground hover:text-destructive">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }} 
+                  className="text-muted-foreground hover:text-destructive"
+                >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
