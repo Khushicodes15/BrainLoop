@@ -1,12 +1,10 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://192.168.29.170:8000',
+  baseURL: import.meta.env.VITE_API_URL,
 });
 
-// -----------------------------
-// Document & General AI Features
-// -----------------------------
+
 export const uploadDocument = (file: File, onProgress?: (pct: number) => void) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -25,9 +23,6 @@ export const explainAI = (text: string) => api.post('/explain', { text });
 export const summarizeAI = (documentId: string) => api.post('/summarize', { document_id: documentId });
 export const detectIntent = (text: string) => api.post('/intent', { text });
 
-// -----------------------------
-// Quiz Endpoints (Fixed to match backend)
-// -----------------------------
 export const startQuiz = () => api.post('/quiz/start');
 
 export const submitAnswer = (selected_option: string) => 
@@ -37,13 +32,11 @@ export const getNextQuestion = () => api.get('/quiz/next');
 
 export const getQuizSummary = () => api.get('/quiz/summary');
 
-// Aliases for backward compatibility (optional)
+
 export const generateQuiz = startQuiz;
 export const evaluateAnswer = (selected_option: string) => submitAnswer(selected_option);
 
-// -----------------------------
-// Flashcards & Tracking
-// -----------------------------
+
 export const generateFlashcards = (numCards = 5) => 
   api.post('/generate-flashcards', { num_cards: numCards });
 
